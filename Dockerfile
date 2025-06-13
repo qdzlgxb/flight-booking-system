@@ -7,7 +7,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # 后端构建阶段
-FROM maven:3.9-openjdk-17-slim AS backend-build
+FROM maven:3.9.6-eclipse-temurin-17 AS backend-build
 WORKDIR /app/backend
 COPY backend/pom.xml ./
 RUN mvn dependency:go-offline -B

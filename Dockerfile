@@ -19,6 +19,20 @@ FROM openjdk:17-jdk-slim
 LABEL maintainer="Flight Booking System"
 LABEL description="航班购票系统 - 基于Spring Boot的Docker镜像"
 
+# 环境变量配置说明
+# 可以通过以下环境变量覆盖应用配置：
+# DB_URL: 数据库连接地址
+# DB_USERNAME: 数据库用户名
+# DB_PASSWORD: 数据库密码
+# DB_DDL_AUTO: JPA DDL 自动模式 (create, update, validate, none)
+# DB_SHOW_SQL: 是否显示SQL语句 (true/false)
+# ADMIN_USERNAME: 管理员用户名
+# ADMIN_PASSWORD: 管理员密码
+# SERVER_PORT: 服务器端口 (默认: 8080)
+# JWT_SECRET: JWT签名密钥
+# JWT_EXPIRATION: JWT过期时间 (毫秒)
+# LOG_LEVEL: 日志级别 (DEBUG, INFO, WARN, ERROR)
+
 # 创建非root用户
 RUN groupadd -r spring && useradd -r -g spring spring
 
@@ -50,5 +64,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8080/actuator/health || exit 1
 
-# 启动Spring Boot应用
-CMD ["java", "-jar", "app.jar"] 
+# 启动Spring Boot应用，添加生产环境优化参数
+CMD ["java", "-server", "-Xms512m", "-Xmx1024m", "-XX:+UseG1GC", "-XX:+UseContainerSupport", "-Djava.security.egd=file:/dev/./urandom", "-jar", "app.jar"] 

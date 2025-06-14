@@ -87,17 +87,94 @@ flight-booking-system/
 
 前端将在 http://localhost:5173 启动
 
+### Docker 部署
+
+如果你想使用 Docker 部署整个系统：
+
+```bash
+# 使用默认配置（仅适用于测试）
+docker run -d --name flight-booking-system -p 8080:8080 ghcr.io/your-username/flight-booking-system:latest
+
+# 使用自定义数据库配置（推荐用于生产）
+docker run -d \
+  --name flight-booking-system \
+  -p 8080:8080 \
+  -e DB_URL="jdbc:mysql://your-db-host:3306/your_database" \
+  -e DB_USERNAME="your_username" \
+  -e DB_PASSWORD="your_password" \
+  -e JWT_SECRET="your-very-secure-and-long-jwt-secret-key" \
+  -e ADMIN_PASSWORD="your-secure-admin-password" \
+  -e LOG_LEVEL="INFO" \
+  ghcr.io/your-username/flight-booking-system:latest
+```
+
+访问地址：http://localhost:8080
+
+更多Docker部署选项请参考 [DOCKER_README.md](DOCKER_README.md)
+
 ## 数据库配置
+
+### 本地开发环境
 
 数据库配置信息在 `backend/src/main/resources/application.yml`：
 
 ```yaml
 spring:
   datasource:
-    url: jdbc:mysql://47.117.64.72:3306/JavaFullStackTraining
-    username: JavaFullStackTrainingAdmin
-    password: 8xchWheZpKiiQxnX
+    url: ${DB_URL:jdbc:mysql://47.117.64.72:3306/JavaFullStackTraining}
+    username: ${DB_USERNAME:JavaFullStackTrainingAdmin}
+    password: ${DB_PASSWORD:8xchWheZpKiiQxnX}
 ```
+
+### Docker 部署环境
+
+使用环境变量覆盖默认配置：
+
+```bash
+# 基本数据库配置
+export DB_URL="jdbc:mysql://your-host:3306/your_database"
+export DB_USERNAME="your_username"
+export DB_PASSWORD="your_password"
+
+# 可选配置
+export JWT_SECRET="your_jwt_secret_key"
+export ADMIN_USERNAME="admin"
+export ADMIN_PASSWORD="admin123"
+export SERVER_PORT="8080"
+export LOG_LEVEL="INFO"
+```
+
+### 支持的环境变量
+
+完整的环境变量配置示例请参考 [`env.example`](env.example) 文件。
+
+| 环境变量 | 描述 | 默认值 |
+|---------|------|--------|
+| `DB_URL` | 数据库连接地址 | `jdbc:mysql://47.117.64.72:3306/JavaFullStackTraining` |
+| `DB_USERNAME` | 数据库用户名 | `JavaFullStackTrainingAdmin` |
+| `DB_PASSWORD` | 数据库密码 | `8xchWheZpKiiQxnX` |
+| `DB_DDL_AUTO` | JPA DDL模式 | `update` |
+| `DB_SHOW_SQL` | 显示SQL语句 | `true` |
+| `ADMIN_USERNAME` | 管理员用户名 | `admin` |
+| `ADMIN_PASSWORD` | 管理员密码 | `admin123` |
+| `SERVER_PORT` | 服务器端口 | `8080` |
+| `JWT_SECRET` | JWT签名密钥 | 默认密钥 |
+| `JWT_EXPIRATION` | JWT过期时间(ms) | `86400000` |
+| `LOG_LEVEL` | 日志级别 | `DEBUG` |
+
+### 快速配置
+
+1. 复制环境变量示例文件：
+   ```bash
+   cp env.example .env
+   ```
+
+2. 编辑 `.env` 文件，修改数据库连接信息和其他敏感配置
+
+3. 使用 Docker Compose 启动：
+   ```bash
+   docker-compose up -d
+   ```
 
 ## API 接口
 

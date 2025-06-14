@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  flight-booking:
+    image: ghcr.io/your-username/flight-booking-system:latest
+    container_name: flight-booking-system
+    ports:
+      - "8080:8080"
+    environment:
+      # 数据库配置
+      - DB_URL=jdbc:mysql://mysql:3306/flight_booking?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+      - DB_USERNAME=flightuser
+      - DB_PASSWORD=flightpass123
+      - DB_DDL_AUTO=update
+      - DB_SHOW_SQL=false
+      
+      # 应用配置
+      - JWT_SECRET=your-production-jwt-secret-key-should-be-very-long-and-secure-at-least-64-characters
+      - JWT_EXPIRATION=86400000
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=admin123456
+      - SERVER_PORT=8080
+      - LOG_LEVEL=INFO
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - flight-booking-network
+
+  mysql:
+    image: mysql:8.0
+    container_name: flight-booking-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpass123
+      - MYSQL_DATABASE=flight_booking
+      - MYSQL_USER=flightuser
+      - MYSQL_PASSWORD=flightpass123
+      - MYSQL_CHARACTER_SET_SERVER=utf8mb4
+      - MYSQL_COLLATION_SERVER=utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - flight-booking-network
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  flight-booking-network:
+    driver: bridge
+
+# 使用说明：
+# 1. 修改上面的敏感信息（密码、JWT密钥等）
+# 2. 运行: docker-compose up -d
+# 3. 访问: http://localhost:8080
+# 4. 数据库连接: localhost:3306（如果需要外部访问）
+#
+# 生产环境建议：
+# - 使用更强的密码
+# - 使用 Docker secrets 管理敏感信息
+# - 移除数据库的端口映射（3306）
+# - 设置 DB_DDL_AUTO=validate 或 none 

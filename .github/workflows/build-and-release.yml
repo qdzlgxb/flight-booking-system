@@ -68,10 +68,20 @@ jobs:
         echo "# 拉取镜像" >> $GITHUB_OUTPUT
         echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_OUTPUT
         echo "" >> $GITHUB_OUTPUT
-        echo "# 运行容器" >> $GITHUB_OUTPUT
+        echo "# 运行容器（使用默认配置）" >> $GITHUB_OUTPUT
         echo "docker run -d \\" >> $GITHUB_OUTPUT
         echo "  --name flight-booking-system \\" >> $GITHUB_OUTPUT
         echo "  -p 8080:8080 \\" >> $GITHUB_OUTPUT
+        echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo "# 运行容器（自定义数据库配置）" >> $GITHUB_OUTPUT
+        echo "docker run -d \\" >> $GITHUB_OUTPUT
+        echo "  --name flight-booking-system \\" >> $GITHUB_OUTPUT
+        echo "  -p 8080:8080 \\" >> $GITHUB_OUTPUT
+        echo "  -e DB_URL=jdbc:mysql://your-db:3306/your_database \\" >> $GITHUB_OUTPUT
+        echo "  -e DB_USERNAME=your_username \\" >> $GITHUB_OUTPUT
+        echo "  -e DB_PASSWORD=your_password \\" >> $GITHUB_OUTPUT
+        echo "  -e JWT_SECRET=your_jwt_secret_key \\" >> $GITHUB_OUTPUT
         echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_OUTPUT
         echo "\`\`\`" >> $GITHUB_OUTPUT
         echo "" >> $GITHUB_OUTPUT
@@ -109,6 +119,17 @@ jobs:
         echo "- **构建时间**: $(date)" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 🚀 部署命令" >> $GITHUB_STEP_SUMMARY
+        echo "#### 使用默认配置：" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
         echo "docker run -d --name flight-booking-system -p 8080:8080 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "#### 自定义数据库配置：" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+        echo "docker run -d --name flight-booking-system -p 8080:8080 \\" >> $GITHUB_STEP_SUMMARY
+        echo "  -e DB_URL=jdbc:mysql://your-db:3306/your_database \\" >> $GITHUB_STEP_SUMMARY
+        echo "  -e DB_USERNAME=your_username \\" >> $GITHUB_STEP_SUMMARY
+        echo "  -e DB_PASSWORD=your_password \\" >> $GITHUB_STEP_SUMMARY
+        echo "  -e JWT_SECRET=your_jwt_secret_key \\" >> $GITHUB_STEP_SUMMARY
+        echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY 

@@ -53,17 +53,280 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
         
+    # 新增：构建用于导出的 Docker 镜像（仅 amd64 架构，因为需要导出为 tar）
+    - name: 构建用于导出的Docker镜像
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64
+        push: false
+        load: true
+        tags: flight-booking-system:${{ github.ref_name }}
+        cache-from: type=gha
+        
+    # 新增：导出 Docker 镜像为 tar 文件
+    - name: 导出Docker镜像为tar文件
+      run: |
+        # 创建导出目录
+        mkdir -p docker-images
+        
+        # 导出镜像为 tar 文件
+        docker save flight-booking-system:${{ github.ref_name }} | gzip > docker-images/flight-booking-system-${{ github.ref_name }}-amd64.tar.gz
+        
+        # 验证文件创建成功
+        ls -lh docker-images/
+        
+        # 计算文件校验和
+        cd docker-images
+        sha256sum flight-booking-system-${{ github.ref_name }}-amd64.tar.gz > flight-booking-system-${{ github.ref_name }}-amd64.tar.gz.sha256
+        cat flight-booking-system-${{ github.ref_name }}-amd64.tar.gz.sha256
+        
+    # 新增：创建部署脚本
+    - name: 创建部署脚本
+      run: |
+        cat > docker-images/deploy.sh << 'EOF'
+        #!/bin/bash
+        
+        # 航班购票系统 Docker 镜像部署脚本
+        # 使用方法: ./deploy.sh [镜像tar文件路径]
+        
+        set -e
+        
+        IMAGE_TAR="${1:-flight-booking-system-${{ github.ref_name }}-amd64.tar.gz}"
+        IMAGE_NAME="flight-booking-system:${{ github.ref_name }}"
+        CONTAINER_NAME="flight-booking-system"
+        
+        echo "=== 航班购票系统部署脚本 ==="
+        echo "版本: ${{ github.ref_name }}"
+        echo "镜像文件: $IMAGE_TAR"
+        echo ""
+        
+        # 检查镜像文件是否存在
+        if [ ! -f "$IMAGE_TAR" ]; then
+            echo "❌ 错误: 镜像文件 $IMAGE_TAR 不存在"
+            exit 1
+        fi
+        
+        # 验证文件完整性（如果存在 sha256 文件）
+        if [ -f "$IMAGE_TAR.sha256" ]; then
+            echo "🔍 验证文件完整性..."
+            if sha256sum -c "$IMAGE_TAR.sha256"; then
+                echo "✅ 文件完整性验证通过"
+            else
+                echo "❌ 文件完整性验证失败"
+                exit 1
+            fi
+        fi
+        
+        # 停止并删除旧容器（如果存在）
+        if docker ps -a --format 'table {{.Names}}' | grep -q "^$CONTAINER_NAME$"; then
+            echo "🛑 停止旧容器..."
+            docker stop $CONTAINER_NAME || true
+            echo "🗑️  删除旧容器..."
+            docker rm $CONTAINER_NAME || true
+        fi
+        
+        # 删除旧镜像（如果存在）
+        if docker images --format 'table {{.Repository}}:{{.Tag}}' | grep -q "^$IMAGE_NAME$"; then
+            echo "🗑️  删除旧镜像..."
+            docker rmi $IMAGE_NAME || true
+        fi
+        
+        # 加载新镜像
+        echo "📦 加载 Docker 镜像..."
+        if [[ "$IMAGE_TAR" == *.gz ]]; then
+            gunzip -c "$IMAGE_TAR" | docker load
+        else
+            docker load < "$IMAGE_TAR"
+        fi
+        
+        # 启动容器
+        echo "🚀 启动应用容器..."
+        docker run -d \
+            --name $CONTAINER_NAME \
+            --restart unless-stopped \
+            -p 8080:8080 \
+            $IMAGE_NAME
+        
+        echo ""
+        echo "✅ 部署完成！"
+        echo "🌐 应用访问地址: http://localhost:8080"
+        echo "📊 查看容器状态: docker ps"
+        echo "📋 查看应用日志: docker logs $CONTAINER_NAME"
+        echo ""
+        echo "📝 自定义数据库配置示例:"
+        echo "docker run -d \\"
+        echo "  --name $CONTAINER_NAME \\"
+        echo "  --restart unless-stopped \\"
+        echo "  -p 8080:8080 \\"
+        echo "  -e DB_URL=jdbc:mysql://your-db:3306/your_database \\"
+        echo "  -e DB_USERNAME=your_username \\"
+        echo "  -e DB_PASSWORD=your_password \\"
+        echo "  -e JWT_SECRET=your_jwt_secret_key \\"
+        echo "  $IMAGE_NAME"
+        EOF
+        
+        chmod +x docker-images/deploy.sh
+        
+    # 新增：创建离线部署说明文档
+    - name: 创建离线部署说明
+      run: |
+        cat > docker-images/README.md << 'EOF'
+        # 航班购票系统 - 离线部署包
+        
+        版本: ${{ github.ref_name }}
+        构建时间: $(date)
+        
+        ## 📦 包含文件
+        
+        - `flight-booking-system-${{ github.ref_name }}-amd64.tar.gz` - Docker 镜像文件
+        - `flight-booking-system-${{ github.ref_name }}-amd64.tar.gz.sha256` - 文件校验和
+        - `deploy.sh` - 自动部署脚本
+        - `README.md` - 本说明文档
+        
+        ## 🚀 快速部署
+        
+        ### 方法一：使用自动部署脚本（推荐）
+        
+        ```bash
+        # 给脚本执行权限
+        chmod +x deploy.sh
+        
+        # 运行部署脚本
+        ./deploy.sh
+        ```
+        
+        ### 方法二：手动部署
+        
+        ```bash
+        # 1. 加载 Docker 镜像
+        gunzip -c flight-booking-system-${{ github.ref_name }}-amd64.tar.gz | docker load
+        
+        # 2. 运行容器
+        docker run -d \
+          --name flight-booking-system \
+          --restart unless-stopped \
+          -p 8080:8080 \
+          flight-booking-system:${{ github.ref_name }}
+        
+        # 3. 访问应用
+        # 浏览器打开: http://localhost:8080
+        ```
+        
+        ## ⚙️ 自定义配置
+        
+        ### 数据库配置
+        
+        如果需要连接外部 MySQL 数据库，请使用以下命令：
+        
+        ```bash
+        docker run -d \
+          --name flight-booking-system \
+          --restart unless-stopped \
+          -p 8080:8080 \
+          -e DB_URL=jdbc:mysql://your-db-host:3306/your_database \
+          -e DB_USERNAME=your_username \
+          -e DB_PASSWORD=your_password \
+          -e JWT_SECRET=your_jwt_secret_key \
+          flight-booking-system:${{ github.ref_name }}
+        ```
+        
+        ### 环境变量说明
+        
+        | 变量名 | 默认值 | 说明 |
+        |--------|--------|------|
+        | `DB_URL` | `jdbc:h2:mem:testdb` | 数据库连接URL |
+        | `DB_USERNAME` | `sa` | 数据库用户名 |
+        | `DB_PASSWORD` | `` | 数据库密码 |
+        | `JWT_SECRET` | `mySecretKey` | JWT 签名密钥 |
+        | `SERVER_PORT` | `8080` | 应用端口 |
+        
+        ## 🔧 常用命令
+        
+        ```bash
+        # 查看容器状态
+        docker ps
+        
+        # 查看应用日志
+        docker logs flight-booking-system
+        
+        # 进入容器
+        docker exec -it flight-booking-system sh
+        
+        # 停止容器
+        docker stop flight-booking-system
+        
+        # 删除容器
+        docker rm flight-booking-system
+        
+        # 删除镜像
+        docker rmi flight-booking-system:${{ github.ref_name }}
+        ```
+        
+        ## 📋 系统要求
+        
+        - Docker 版本 20.10 或更高
+        - 系统架构: linux/amd64
+        - 可用内存: 至少 512MB
+        - 可用存储: 至少 1GB
+        
+        ## 🆘 故障排除
+        
+        ### 端口冲突
+        如果 8080 端口被占用，可以更换端口：
+        ```bash
+        docker run -d --name flight-booking-system -p 9080:8080 flight-booking-system:${{ github.ref_name }}
+        ```
+        
+        ### 容器启动失败
+        查看详细日志：
+        ```bash
+        docker logs flight-booking-system
+        ```
+        
+        ### 数据库连接问题
+        1. 确认数据库服务正在运行
+        2. 检查网络连接
+        3. 验证数据库用户名和密码
+        4. 确认数据库已创建
+        
+        ## 📞 技术支持
+        
+        如遇到问题，请查看项目文档或提交 Issue。
+        EOF
+        
     - name: 生成发布说明
       id: release_notes
       run: |
         echo "release_body<<EOF" >> $GITHUB_OUTPUT
         echo "## 🚀 航班购票系统 - 版本 ${{ github.ref_name }}" >> $GITHUB_OUTPUT
         echo "" >> $GITHUB_OUTPUT
-        echo "### 📦 Docker 镜像" >> $GITHUB_OUTPUT
+        echo "### 📦 在线 Docker 镜像" >> $GITHUB_OUTPUT
         echo "- 镜像地址: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}\`" >> $GITHUB_OUTPUT
         echo "- 支持架构: linux/amd64, linux/arm64" >> $GITHUB_OUTPUT
         echo "" >> $GITHUB_OUTPUT
-        echo "### 🐳 快速部署" >> $GITHUB_OUTPUT
+        echo "### 💾 离线部署包" >> $GITHUB_OUTPUT
+        echo "本次发布包含离线部署包，适用于无互联网连接的服务器：" >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo "- **flight-booking-system-${{ github.ref_name }}-amd64.tar.gz** - Docker 镜像文件 (linux/amd64)" >> $GITHUB_OUTPUT
+        echo "- **flight-booking-system-${{ github.ref_name }}-amd64.tar.gz.sha256** - 文件校验和" >> $GITHUB_OUTPUT
+        echo "- **deploy.sh** - 自动部署脚本" >> $GITHUB_OUTPUT
+        echo "- **README.md** - 离线部署说明文档" >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo "### 🚀 离线快速部署" >> $GITHUB_OUTPUT
+        echo "\`\`\`bash" >> $GITHUB_OUTPUT
+        echo "# 1. 下载所有文件到目标服务器" >> $GITHUB_OUTPUT
+        echo "# 2. 给部署脚本执行权限" >> $GITHUB_OUTPUT
+        echo "chmod +x deploy.sh" >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo "# 3. 运行部署脚本" >> $GITHUB_OUTPUT
+        echo "./deploy.sh" >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo "# 4. 访问应用" >> $GITHUB_OUTPUT
+        echo "# 浏览器打开: http://localhost:8080" >> $GITHUB_OUTPUT
+        echo "\`\`\`" >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo "### 🐳 在线快速部署" >> $GITHUB_OUTPUT
         echo "\`\`\`bash" >> $GITHUB_OUTPUT
         echo "# 拉取镜像" >> $GITHUB_OUTPUT
         echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_OUTPUT
@@ -71,17 +334,8 @@ jobs:
         echo "# 运行容器（使用默认配置）" >> $GITHUB_OUTPUT
         echo "docker run -d \\" >> $GITHUB_OUTPUT
         echo "  --name flight-booking-system \\" >> $GITHUB_OUTPUT
+        echo "  --restart unless-stopped \\" >> $GITHUB_OUTPUT
         echo "  -p 8080:8080 \\" >> $GITHUB_OUTPUT
-        echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_OUTPUT
-        echo "" >> $GITHUB_OUTPUT
-        echo "# 运行容器（自定义数据库配置）" >> $GITHUB_OUTPUT
-        echo "docker run -d \\" >> $GITHUB_OUTPUT
-        echo "  --name flight-booking-system \\" >> $GITHUB_OUTPUT
-        echo "  -p 8080:8080 \\" >> $GITHUB_OUTPUT
-        echo "  -e DB_URL=jdbc:mysql://your-db:3306/your_database \\" >> $GITHUB_OUTPUT
-        echo "  -e DB_USERNAME=your_username \\" >> $GITHUB_OUTPUT
-        echo "  -e DB_PASSWORD=your_password \\" >> $GITHUB_OUTPUT
-        echo "  -e JWT_SECRET=your_jwt_secret_key \\" >> $GITHUB_OUTPUT
         echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_OUTPUT
         echo "\`\`\`" >> $GITHUB_OUTPUT
         echo "" >> $GITHUB_OUTPUT
@@ -90,6 +344,7 @@ jobs:
         echo "- 👤 用户认证和权限管理" >> $GITHUB_OUTPUT
         echo "- 🎨 现代化的前端界面" >> $GITHUB_OUTPUT
         echo "- 🛡️ 安全的后端API接口" >> $GITHUB_OUTPUT
+        echo "- 📦 支持在线和离线部署" >> $GITHUB_OUTPUT
         echo "" >> $GITHUB_OUTPUT
         echo "### 🔧 技术栈" >> $GITHUB_OUTPUT
         echo "- **前端**: React + TypeScript + Vite" >> $GITHUB_OUTPUT
@@ -99,6 +354,7 @@ jobs:
         echo "EOF" >> $GITHUB_OUTPUT
         
     - name: 创建Release
+      id: create_release
       uses: actions/create-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -109,27 +365,71 @@ jobs:
         draft: false
         prerelease: false
         
+    # 新增：上传离线部署文件到 Release
+    - name: 上传Docker镜像tar文件
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./docker-images/flight-booking-system-${{ github.ref_name }}-amd64.tar.gz
+        asset_name: flight-booking-system-${{ github.ref_name }}-amd64.tar.gz
+        asset_content_type: application/gzip
+        
+    - name: 上传校验和文件
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./docker-images/flight-booking-system-${{ github.ref_name }}-amd64.tar.gz.sha256
+        asset_name: flight-booking-system-${{ github.ref_name }}-amd64.tar.gz.sha256
+        asset_content_type: text/plain
+        
+    - name: 上传部署脚本
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./docker-images/deploy.sh
+        asset_name: deploy.sh
+        asset_content_type: text/plain
+        
+    - name: 上传离线部署说明
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./docker-images/README.md
+        asset_name: README.md
+        asset_content_type: text/markdown
+        
     - name: 构建摘要
       run: |
         echo "## 🎉 构建完成!" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 📦 构建信息" >> $GITHUB_STEP_SUMMARY
         echo "- **版本**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **镜像**: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **在线镜像**: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **离线镜像**: flight-booking-system-${{ github.ref_name }}-amd64.tar.gz" >> $GITHUB_STEP_SUMMARY
         echo "- **构建时间**: $(date)" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 🚀 部署命令" >> $GITHUB_STEP_SUMMARY
+        echo "### 🚀 在线部署命令" >> $GITHUB_STEP_SUMMARY
         echo "#### 使用默认配置：" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-        echo "docker run -d --name flight-booking-system -p 8080:8080 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "docker run -d --name flight-booking-system --restart unless-stopped -p 8080:8080 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "#### 自定义数据库配置：" >> $GITHUB_STEP_SUMMARY
+        echo "### 💾 离线部署说明" >> $GITHUB_STEP_SUMMARY
+        echo "1. 从 Release 页面下载以下文件：" >> $GITHUB_STEP_SUMMARY
+        echo "   - flight-booking-system-${{ github.ref_name }}-amd64.tar.gz" >> $GITHUB_STEP_SUMMARY
+        echo "   - flight-booking-system-${{ github.ref_name }}-amd64.tar.gz.sha256" >> $GITHUB_STEP_SUMMARY
+        echo "   - deploy.sh" >> $GITHUB_STEP_SUMMARY
+        echo "   - README.md" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "2. 在目标服务器上运行：" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-        echo "docker run -d --name flight-booking-system -p 8080:8080 \\" >> $GITHUB_STEP_SUMMARY
-        echo "  -e DB_URL=jdbc:mysql://your-db:3306/your_database \\" >> $GITHUB_STEP_SUMMARY
-        echo "  -e DB_USERNAME=your_username \\" >> $GITHUB_STEP_SUMMARY
-        echo "  -e DB_PASSWORD=your_password \\" >> $GITHUB_STEP_SUMMARY
-        echo "  -e JWT_SECRET=your_jwt_secret_key \\" >> $GITHUB_STEP_SUMMARY
-        echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "chmod +x deploy.sh && ./deploy.sh" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY 

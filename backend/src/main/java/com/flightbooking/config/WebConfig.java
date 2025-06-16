@@ -27,7 +27,12 @@ public class WebConfig implements WebMvcConfigurer {
     public void addViewControllers(ViewControllerRegistry registry) {
         // 对于前端路由，都返回index.html，让前端路由处理
         registry.addViewController("/").setViewName("forward:/index.html");
-        registry.addViewController("/{path:[^\\.]*}").setViewName("forward:/index.html");
-        registry.addViewController("/{path:[^\\.]*}/{path2:[^\\.]*}").setViewName("forward:/index.html");
+        // 简化路径配置，避免复杂的正则表达式
+        registry.addViewController("/login").setViewName("forward:/index.html");
+        registry.addViewController("/register").setViewName("forward:/index.html");
+        registry.addViewController("/dashboard").setViewName("forward:/index.html");
+        registry.addViewController("/booking").setViewName("forward:/index.html");
+        registry.addViewController("/search").setViewName("forward:/index.html");
+        registry.addViewController("/admin").setViewName("forward:/index.html");
     }
 } 
